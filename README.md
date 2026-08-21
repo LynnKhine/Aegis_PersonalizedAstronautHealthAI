@@ -2,7 +2,7 @@
 
 **An AI health companion that catches astronaut health decline before it becomes a mission risk.**
 
-Built for the **BeMyApp x IBM AI Builders Challenge — Advance Space Exploration with AI**.
+Built for the **BeMyApp x IBM AI Builders Challenge For IBM August 2026 Hackathon Event — Advance Space Exploration with AI**.
 
 ---
 
