@@ -141,25 +141,42 @@ public sealed class ReadingsController : ControllerBase
             var result = await _watsonx.GenerateInterventionPlanAsync(
                 astronaut, composite.Contributors, ct);
 
+            var contributors = BuildContributors(composite.Contributors);
+
             var plan = new InterventionPlan
             {
-                Id                    = Guid.NewGuid(),
-                AstronautId           = astronaut.Id,
-                TriggeredByReadingId  = reading.Id,
-                Summary               = result.Summary,
-                ImmediateActionsJson  = JsonSerializer.Serialize(result.ImmediateActions),
-                MonitoringFrequency   = result.MonitoringFrequency,
+                Id                      = Guid.NewGuid(),
+                AstronautId             = astronaut.Id,
+                TriggeredByReadingId    = reading.Id,
+                Summary                 = result.Summary,
+                ImmediateActionsJson    = JsonSerializer.Serialize(result.ImmediateActions),
+                MonitoringFrequency     = result.MonitoringFrequency,
                 EscalateToFlightSurgeon = result.EscalateToFlightSurgeon,
-                GeneratedAt           = DateTime.UtcNow,
+                GeneratedAt             = DateTime.UtcNow,
+                ContributorsJson        = JsonSerializer.Serialize(contributors),
+                CompositeScore          = composite.Score,
             };
 
             await _plans.AddAsync(plan, ct);
             await _plans.SaveChangesAsync(ct);
 
-            // 4. Push to astronaut's SignalR group
+            // 4. Push rich envelope to astronaut's SignalR group
+            var push = new InterventionPlanPush
+            {
+                Id                      = plan.Id,
+                AstronautId             = plan.AstronautId,
+                Summary                 = plan.Summary,
+                ImmediateActions        = result.ImmediateActions,
+                MonitoringFrequency     = plan.MonitoringFrequency,
+                EscalateToFlightSurgeon = plan.EscalateToFlightSurgeon,
+                GeneratedAt             = plan.GeneratedAt,
+                CompositeScore          = composite.Score,
+                Contributors            = contributors,
+            };
+
             await _hub.Clients
                 .Group($"astronaut-{astronaut.Id}")
-                .InterventionPlanGenerated(plan);
+                .InterventionPlanGenerated(push);
 
             planResponse = new InterventionPlanResponse(
                 plan.Id,
@@ -183,4 +200,25 @@ public sealed class ReadingsController : ControllerBase
 
         return CreatedAtAction(nameof(IngestReading), new { id = reading.Id }, response);
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static ContributorEntry[] BuildContributors(IReadOnlyList<BiometricReading> readings) =>
+        readings
+            .Where(r => r.Severity != SeverityLevel.None)
+            .OrderByDescending(r => r.ZScore)
+            .Select(r => new ContributorEntry(
+                r.MetricType,
+                Math.Round(r.ZScore, 2),
+                r.Severity,
+                TierWeightOf(r.Severity)))
+            .ToArray();
+
+    private static int TierWeightOf(SeverityLevel s) => s switch
+    {
+        SeverityLevel.Warning  => 1,
+        SeverityLevel.Alert    => 2,
+        SeverityLevel.Critical => 3,
+        _                      => 0,
+    };
 }

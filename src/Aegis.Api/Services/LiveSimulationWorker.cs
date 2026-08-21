@@ -5,6 +5,7 @@ using Aegis.Core.Interfaces;
 using Aegis.Core.Models;
 using Aegis.Core.Services;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Aegis.Api.Services;
 
@@ -123,6 +124,20 @@ public sealed class LiveSimulationWorker : BackgroundService
                     var result = await watsonx.GenerateInterventionPlanAsync(
                         astronaut, composite.Contributors, ct);
 
+                    var contributors = composite.Contributors
+                        .Where(r => r.Severity != SeverityLevel.None)
+                        .OrderByDescending(r => r.ZScore)
+                        .Select(r => new ContributorEntry(
+                            r.MetricType,
+                            Math.Round(r.ZScore, 2),
+                            r.Severity,
+                            r.Severity switch {
+                                SeverityLevel.Warning  => 1,
+                                SeverityLevel.Alert    => 2,
+                                SeverityLevel.Critical => 3,
+                                _                      => 0 }))
+                        .ToArray();
+
                     var plan = new InterventionPlan
                     {
                         Id                      = Guid.NewGuid(),
@@ -133,14 +148,29 @@ public sealed class LiveSimulationWorker : BackgroundService
                         MonitoringFrequency     = result.MonitoringFrequency,
                         EscalateToFlightSurgeon = result.EscalateToFlightSurgeon,
                         GeneratedAt             = DateTime.UtcNow,
+                        ContributorsJson        = JsonSerializer.Serialize(contributors),
+                        CompositeScore          = composite.Score,
                     };
 
                     await planRepo.AddAsync(plan, ct);
                     await planRepo.SaveChangesAsync(ct);
 
+                    var push = new InterventionPlanPush
+                    {
+                        Id                      = plan.Id,
+                        AstronautId             = plan.AstronautId,
+                        Summary                 = plan.Summary,
+                        ImmediateActions        = result.ImmediateActions,
+                        MonitoringFrequency     = plan.MonitoringFrequency,
+                        EscalateToFlightSurgeon = plan.EscalateToFlightSurgeon,
+                        GeneratedAt             = plan.GeneratedAt,
+                        CompositeScore          = composite.Score,
+                        Contributors            = contributors,
+                    };
+
                     await _hub.Clients
                         .Group($"astronaut-{astronaut.Id}")
-                        .InterventionPlanGenerated(plan);
+                        .InterventionPlanGenerated(push);
                 }
                 catch (Exception ex)
                 {
