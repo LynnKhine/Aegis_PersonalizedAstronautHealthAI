@@ -115,14 +115,141 @@ body::before {
 /* ── Astronaut Card ────────────────────────────────────────────────────── */
 .card {
   background: var(--bg-card);
-  padding: 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   position: relative;
   transition: background 0.4s ease;
   min-height: 360px;
 }
+
+/* inner wrapper keeps existing padding for telemetry view */
+.card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+/* ── Tab switcher ──────────────────────────────────────────────────────── */
+.card-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.card-tab {
+  flex: 1;
+  padding: 7px 0;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-align: center;
+  color: #5a8898;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: var(--mono);
+  user-select: none;
+}
+.card-tab:hover    { color: var(--text-mid); }
+.card-tab.active   { color: var(--text-bright); border-bottom-color: #6ab0c0; }
+.card-tab.log-has-entries { color: var(--col-warn-fg); }
+.card-tab.log-has-entries.active { border-bottom-color: var(--col-warn-fg); }
+
+/* ── Mission log panel ─────────────────────────────────────────────────── */
+.log-panel {
+  display: none;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  max-height: 420px;
+  padding: 0 16px 12px;
+  flex: 1;
+}
+.log-panel.visible { display: flex; }
+
+.log-empty {
+  font-size: 11px;
+  color: #5a8898;
+  letter-spacing: 0.15em;
+  text-align: center;
+  padding: 20px 0;
+}
+
+.log-entry {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.log-entry:first-child { border-top: none; }
+.log-entry:hover { background: rgba(106,176,192,0.04); margin: 0 -16px; padding: 10px 16px; }
+
+.log-entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.log-timestamp {
+  font-size: 10px;
+  color: #5a8898;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+.log-score-badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}
+.log-score-badge.warn     { color: var(--col-warn-fg);  background: rgba(240,160,32,0.1);  border: 1px solid var(--col-warn-fg);  }
+.log-score-badge.alert    { color: var(--col-alert-fg); background: rgba(255,90,32,0.1);   border: 1px solid var(--col-alert-fg); }
+.log-score-badge.critical { color: var(--col-crit-fg);  background: rgba(255,32,32,0.1);   border: 1px solid var(--col-crit-fg);  }
+.log-score-badge.nominal  { color: #6ab0c0; background: rgba(106,176,192,0.08); border: 1px solid #2a4a5e; }
+
+.log-chips {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.log-chip {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid var(--border-bright);
+  color: #6a9aaa;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.log-chip.warn     { border-color: var(--col-warn-fg);  color: var(--col-warn-fg);  }
+.log-chip.alert    { border-color: var(--col-alert-fg); color: var(--col-alert-fg); }
+.log-chip.critical { border-color: var(--col-crit-fg);  color: var(--col-crit-fg);  }
+
+.log-summary {
+  font-size: 11px;
+  color: var(--text-mid);
+  line-height: 1.5;
+  /* truncated by default, expand on hover */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.log-entry:hover .log-summary { -webkit-line-clamp: unset; overflow: visible; }
+
+.log-surgeon-flag {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--col-crit-fg);
+  display: none;
+}
+.log-surgeon-flag.visible { display: block; }
 
 /* alert state */
 .card.warn    { background: #0e0c00; }
@@ -753,38 +880,51 @@ function buildCard(astro) {
   card.id = `card-${astro.id}`;
 
   card.innerHTML = `
-    <div class="card-head">
-      <div>
-        <div class="card-name">${astro.name.toUpperCase()}</div>
-        <div class="card-meta">${astro.nasaId} · MISSION DAY <span class="mission-day">--</span></div>
+    <div class="card-tabs">
+      <button class="card-tab active" id="tab-telem-${astro.id}"
+              onclick="switchTab('${astro.id}','telemetry')">TELEMETRY</button>
+      <button class="card-tab" id="tab-log-${astro.id}"
+              onclick="switchTab('${astro.id}','log')">MISSION LOG</button>
+    </div>
+
+    <div class="card-body" id="telem-${astro.id}">
+      <div class="card-head">
+        <div>
+          <div class="card-name">${astro.name.toUpperCase()}</div>
+          <div class="card-meta">${astro.nasaId} · MISSION DAY <span class="mission-day">--</span></div>
+        </div>
+        <div class="card-conn">
+          <div class="dot" id="conn-${astro.id}"></div>
+          <span id="connlabel-${astro.id}">OFFLINE</span>
+        </div>
       </div>
-      <div class="card-conn">
-        <div class="dot" id="conn-${astro.id}"></div>
-        <span id="connlabel-${astro.id}">OFFLINE</span>
+
+      <div class="risk-row">
+        <div class="risk-label">RISK</div>
+        <div class="risk-track"><div class="risk-fill" id="riskfill-${astro.id}"></div></div>
+        <div class="risk-val" id="riskval-${astro.id}">--</div>
+        <div class="risk-tier" id="risktier-${astro.id}">--</div>
+      </div>
+
+      <div class="metrics" id="metrics-${astro.id}">
+        <div class="no-data">AWAITING TELEMETRY</div>
+      </div>
+
+      <div class="alert-panel" id="alert-${astro.id}">
+        <div class="alert-header">INTERVENTION PLAN GENERATED</div>
+        <div class="explain-strip" id="explain-${astro.id}"></div>
+        <div class="alert-summary" id="alertsum-${astro.id}"></div>
+        <div class="alert-actions-label">IMMEDIATE ACTIONS</div>
+        <div class="alert-actions" id="alertact-${astro.id}"></div>
+        <div class="alert-meta">
+          <div class="alert-freq">MONITOR: <span id="alertfreq-${astro.id}"></span></div>
+          <div class="badge-surgeon" id="badge-${astro.id}">ESCALATE · FLIGHT SURGEON</div>
+        </div>
       </div>
     </div>
 
-    <div class="risk-row">
-      <div class="risk-label">RISK</div>
-      <div class="risk-track"><div class="risk-fill" id="riskfill-${astro.id}"></div></div>
-      <div class="risk-val" id="riskval-${astro.id}">--</div>
-      <div class="risk-tier" id="risktier-${astro.id}">--</div>
-    </div>
-
-    <div class="metrics" id="metrics-${astro.id}">
-      <div class="no-data">AWAITING TELEMETRY</div>
-    </div>
-
-    <div class="alert-panel" id="alert-${astro.id}">
-      <div class="alert-header">INTERVENTION PLAN GENERATED</div>
-      <div class="explain-strip" id="explain-${astro.id}"></div>
-      <div class="alert-summary" id="alertsum-${astro.id}"></div>
-      <div class="alert-actions-label">IMMEDIATE ACTIONS</div>
-      <div class="alert-actions" id="alertact-${astro.id}"></div>
-      <div class="alert-meta">
-        <div class="alert-freq">MONITOR: <span id="alertfreq-${astro.id}"></span></div>
-        <div class="badge-surgeon" id="badge-${astro.id}">ESCALATE · FLIGHT SURGEON</div>
-      </div>
+    <div class="log-panel" id="log-${astro.id}">
+      <div class="log-empty" id="log-empty-${astro.id}">NO INTERVENTIONS RECORDED</div>
     </div>
   `;
 
@@ -1011,9 +1151,12 @@ async function connectHub() {
     console.log('[AEGIS] InterventionPlanGenerated', plan);
     if (plan?.astronautId) {
       showIntervention(plan.astronautId, plan);
-      // Immediately refresh that astronaut's status card
       const astro = ASTRONAUTS.find(a => a.id === plan.astronautId);
-      if (astro) fetchStatus(astro);
+      if (astro) {
+        fetchStatus(astro);
+        // Refresh mission log badge + panel if currently open
+        fetchMissionLog(astro);
+      }
     }
   });
 
@@ -1067,6 +1210,125 @@ async function pollAll() {
   }
 }
 
+// ── Mission Log ───────────────────────────────────────────────────────────────
+const logCache = {};   // astronautId → entries[]
+
+function switchTab(astronautId, tab) {
+  const telemEl = document.getElementById(`telem-${astronautId}`);
+  const logEl   = document.getElementById(`log-${astronautId}`);
+  const tabTel  = document.getElementById(`tab-telem-${astronautId}`);
+  const tabLog  = document.getElementById(`tab-log-${astronautId}`);
+
+  if (tab === 'log') {
+    if (telemEl) telemEl.style.display = 'none';
+    logEl?.classList.add('visible');
+    tabTel?.classList.remove('active');
+    tabLog?.classList.add('active');
+    const astro = ASTRONAUTS.find(a => a.id === astronautId);
+    if (astro) fetchMissionLog(astro);
+  } else {
+    if (telemEl) telemEl.style.display = '';
+    logEl?.classList.remove('visible');
+    tabTel?.classList.add('active');
+    tabLog?.classList.remove('active');
+  }
+}
+
+async function fetchMissionLog(astro) {
+  try {
+    const res = await fetch(`${API_BASE}/api/astronauts/${astro.id}/interventions`);
+    if (!res.ok) return;
+    const entries = await res.json();
+    logCache[astro.id] = entries;
+    renderMissionLog(astro.id, entries);
+    const tabLog = document.getElementById(`tab-log-${astro.id}`);
+    if (tabLog) {
+      if (entries.length > 0) tabLog.classList.add('log-has-entries');
+      else                    tabLog.classList.remove('log-has-entries');
+    }
+  } catch (e) {
+    console.warn('[MissionLog] fetch failed', astro.nasaId, e);
+  }
+}
+
+function renderMissionLog(astronautId, entries) {
+  const panel   = document.getElementById(`log-${astronautId}`);
+  const emptyEl = document.getElementById(`log-empty-${astronautId}`);
+  if (!panel) return;
+
+  Array.from(panel.querySelectorAll('.log-entry')).forEach(e => e.remove());
+
+  if (!entries || entries.length === 0) {
+    if (emptyEl) emptyEl.style.display = '';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  entries.forEach(e => {
+    const sc    = compositeTierClass(e.compositeScore);
+    const label = compositeTierLabel(e.compositeScore);
+    const ts    = new Date(e.generatedAt).toISOString().replace('T',' ').slice(0,19) + ' UTC';
+
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+
+    const head = document.createElement('div');
+    head.className = 'log-entry-head';
+    head.innerHTML =
+      `<span class="log-timestamp">${ts}</span>` +
+      `<span class="log-score-badge ${sc || 'nominal'}">${label} · ${e.compositeScore}</span>`;
+    div.appendChild(head);
+
+    const contributors = e.contributors ?? [];
+    if (contributors.length > 0) {
+      const chips = document.createElement('div');
+      chips.className = 'log-chips';
+      contributors.forEach(c => {
+        const csc = sevClass(c.severity);
+        const short = { HRV:'HRV', SleepQuality:'SLEEP Q',
+                        BoneDensityIndex:'BONE DX', MoodStressScore:'MOOD/STR' }[c.metric] ?? c.metric;
+        const chip = document.createElement('span');
+        chip.className = `log-chip ${csc}`;
+        chip.textContent = `${short} ${c.zScore.toFixed(1)}σ`;
+        chips.appendChild(chip);
+      });
+      div.appendChild(chips);
+    }
+
+    const sum = document.createElement('div');
+    sum.className = 'log-summary';
+    sum.textContent = e.summary || '—';
+    div.appendChild(sum);
+
+    if (e.escalateToFlightSurgeon) {
+      const flag = document.createElement('div');
+      flag.className = 'log-surgeon-flag visible';
+      flag.textContent = '▲ ESCALATED TO FLIGHT SURGEON';
+      div.appendChild(flag);
+    }
+
+    panel.appendChild(div);
+  });
+}
+
+async function refreshLogBadges() {
+  for (const astro of ASTRONAUTS) {
+    try {
+      const res = await fetch(`${API_BASE}/api/astronauts/${astro.id}/interventions`);
+      if (!res.ok) continue;
+      const entries = await res.json();
+      logCache[astro.id] = entries;
+      const tabLog = document.getElementById(`tab-log-${astro.id}`);
+      if (tabLog) {
+        if (entries.length > 0) tabLog.classList.add('log-has-entries');
+        else                    tabLog.classList.remove('log-has-entries');
+      }
+      const logEl = document.getElementById(`log-${astro.id}`);
+      if (logEl?.classList.contains('visible')) renderMissionLog(astro.id, entries);
+    } catch { /* silent */ }
+  }
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   initGrid();
@@ -1078,11 +1340,14 @@ async function boot() {
     await fetchStatus(astro);
   }
 
+  // Initial log badge check (shows amber MISSION LOG tab if history exists)
+  await refreshLogBadges();
+
   // Connect SignalR hub
   await connectHub();
 
-  // Ongoing polling
-  setInterval(pollAll, POLL_MS);
+  // Ongoing polling — status + log badges
+  setInterval(async () => { await pollAll(); await refreshLogBadges(); }, POLL_MS);
 }
 
 boot();

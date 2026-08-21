@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Aegis.Api.Models;
 using Aegis.Core.Enums;
 using Aegis.Core.Interfaces;
+using Aegis.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Aegis.Api.Controllers;
@@ -11,13 +13,16 @@ public sealed class AstronautsController : ControllerBase
 {
     private readonly IAstronautRepository        _astronauts;
     private readonly IBiometricReadingRepository _readings;
+    private readonly IInterventionPlanRepository _plans;
 
     public AstronautsController(
         IAstronautRepository astronauts,
-        IBiometricReadingRepository readings)
+        IBiometricReadingRepository readings,
+        IInterventionPlanRepository plans)
     {
         _astronauts = astronauts;
         _readings   = readings;
+        _plans      = plans;
     }
 
     /// <summary>GET /api/astronauts/{id}/status</summary>
@@ -64,5 +69,34 @@ public sealed class AstronautsController : ControllerBase
         const int pageSize = 50;
         var readings = await _readings.GetPagedAsync(id, metric, page, pageSize, ct);
         return Ok(readings);
+    }
+
+    /// <summary>GET /api/astronauts/{id}/interventions — mission log.</summary>
+    [HttpGet("{id:guid}/interventions")]
+    public async Task<IActionResult> GetInterventions(Guid id, CancellationToken ct)
+    {
+        if (await _astronauts.GetByIdAsync(id, ct) is null) return NotFound();
+
+        var plans = await _plans.GetByAstronautAsync(id, ct);
+
+        var entries = plans.Select(p =>
+        {
+            string[] actions = [];
+            ContributorEntry[] contributors = [];
+            try { actions = JsonSerializer.Deserialize<string[]>(p.ImmediateActionsJson) ?? []; } catch { }
+            try { contributors = JsonSerializer.Deserialize<ContributorEntry[]>(p.ContributorsJson) ?? []; } catch { }
+
+            return new MissionLogEntry(
+                p.Id,
+                p.GeneratedAt,
+                p.CompositeScore,
+                p.Summary,
+                actions,
+                p.MonitoringFrequency,
+                p.EscalateToFlightSurgeon,
+                contributors);
+        }).ToList();
+
+        return Ok(entries);
     }
 }
