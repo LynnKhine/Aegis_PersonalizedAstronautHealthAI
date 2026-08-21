@@ -17,15 +17,15 @@
   --border:      #1a2e3e;
   --border-bright: #1e3a4f;
   --dim:         #2a4a5e;
-  --text-muted:  #4a7a8a;
-  --text-mid:    #7ab0c0;
-  --text:        #b8d8e8;
-  --text-bright: #d8eef8;
+  --text-muted:  #6a9aaa;
+  --text-mid:    #9accd8;
+  --text:        #cce8f4;
+  --text-bright: #eaf6ff;
   --mono:        "Courier New", "Lucida Console", monospace;
 
   /* status colors — used ONLY for deviating states */
   --col-none:     #1e3a4f;
-  --col-none-fg:  #4a7a8a;
+  --col-none-fg:  #6ab0c0;
   --col-warn:     #7a5500;
   --col-warn-fg:  #f0a020;
   --col-alert:    #8b2500;
@@ -80,13 +80,13 @@ body::before {
 }
 #header-sub {
   font-size: 11px;
-  color: var(--text-muted);
+  color: #7ab8c8;
   letter-spacing: 0.18em;
 }
 #header-right { display: flex; align-items: center; gap: 20px; }
 #mission-clock {
   font-size: 15px;
-  color: var(--text-mid);
+  color: #aadde8;
   letter-spacing: 0.1em;
 }
 #hub-status {
@@ -152,13 +152,13 @@ body::before {
 }
 .card-meta {
   font-size: 11px;
-  color: var(--text-muted);
+  color: #8abccc;
   letter-spacing: 0.1em;
   margin-top: 2px;
 }
 .card-conn {
   font-size: 10px;
-  color: var(--text-muted);
+  color: #8abccc;
   letter-spacing: 0.1em;
   display: flex; align-items: center; gap: 5px;
   text-align: right;
@@ -171,7 +171,7 @@ body::before {
 .risk-label {
   font-size: 10px;
   letter-spacing: 0.15em;
-  color: var(--text-muted);
+  color: #8abccc;
   width: 56px;
   flex-shrink: 0;
 }
@@ -191,7 +191,7 @@ body::before {
 }
 .risk-val {
   font-size: 11px;
-  color: var(--text-muted);
+  color: #8abccc;
   width: 28px;
   text-align: right;
   flex-shrink: 0;
@@ -216,7 +216,7 @@ body::before {
 .metric-label {
   font-size: 10px;
   letter-spacing: 0.12em;
-  color: var(--text-muted);
+  color: #8abccc;
 }
 .metric-val {
   font-size: 13px;
@@ -234,7 +234,7 @@ body::before {
   text-align: center;
   padding: 1px 0;
   border-radius: 2px;
-  color: var(--text-muted);
+  color: #8abccc;
   background: transparent;
   transition: all 0.4s ease;
 }
@@ -285,14 +285,14 @@ body::before {
 .alert-actions-label {
   font-size: 10px;
   letter-spacing: 0.15em;
-  color: var(--text-muted);
+  color: #8abccc;
   margin-top: 2px;
 }
 .alert-actions { display: flex; flex-direction: column; gap: 4px; }
 .alert-action {
   display: flex; align-items: flex-start; gap: 7px;
   font-size: 11px;
-  color: var(--text-mid);
+  color: #9accd8;
 }
 .alert-action::before {
   content: "□";
@@ -309,7 +309,7 @@ body::before {
 }
 .alert-freq {
   font-size: 10px;
-  color: var(--text-muted);
+  color: #8abccc;
   letter-spacing: 0.1em;
 }
 .badge-surgeon {
@@ -328,7 +328,7 @@ body::before {
 /* ── No-data state ─────────────────────────────────────────────────────── */
 .no-data {
   font-size: 11px;
-  color: var(--dim);
+  color: #5a8898;
   letter-spacing: 0.15em;
   text-align: center;
   padding: 12px 0;
@@ -339,7 +339,7 @@ body::before {
   padding: 8px 20px;
   border-top: 1px solid var(--border);
   font-size: 10px;
-  color: var(--dim);
+  color: #5a8898;
   letter-spacing: 0.15em;
   display: flex; justify-content: space-between;
   background: var(--bg-panel);

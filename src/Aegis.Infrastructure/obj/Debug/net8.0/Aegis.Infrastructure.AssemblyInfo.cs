@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Aegis.Infrastructure")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f423db3ac58a83d5e832c59d1245b49d0cf86dc4")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+94ab29e026c91d18437a5abbfed44777b78182b1")]
 [assembly: System.Reflection.AssemblyProductAttribute("Aegis.Infrastructure")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Aegis.Infrastructure")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

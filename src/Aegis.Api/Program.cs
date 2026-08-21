@@ -17,7 +17,13 @@ builder.Services.AddAegisInfrastructure(connectionString, builder.Configuration)
 builder.Services.AddScoped<IDeviationScoringService, DeviationScoringService>();
 
 // ─── API + SignalR ────────────────────────────────────────────────────────────
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+    {
+        // Serialize enums as strings so the dashboard JS can match by name
+        opts.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
