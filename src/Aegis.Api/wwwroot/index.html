@@ -64,11 +64,15 @@ body::before {
 /* ── Header ────────────────────────────────────────────────────────────── */
 #header {
   display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+#header-top {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-panel);
   letter-spacing: 0.12em;
 }
 #header-left { display: flex; align-items: center; gap: 16px; }
@@ -88,6 +92,62 @@ body::before {
   font-size: 15px;
   color: #aadde8;
   letter-spacing: 0.1em;
+}
+
+/* ── Ship-wide status bar ───────────────────────────────────────────────── */
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-top: 1px solid var(--border);
+  padding: 0 20px;
+  height: 32px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  overflow: hidden;
+}
+#status-bar-label {
+  color: #5a8898;
+  margin-right: 14px;
+  flex-shrink: 0;
+}
+#status-bar-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+.status-pill {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  transition: color 0.4s;
+}
+.status-pill .dot { flex-shrink: 0; }
+/* pill colors match severity */
+.status-pill.nominal  { color: #6ab0c0; }
+.status-pill.warn     { color: var(--col-warn-fg); }
+.status-pill.alert    { color: var(--col-alert-fg); }
+.status-pill.critical { color: var(--col-crit-fg); }
+
+#status-bar-worst {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  padding: 2px 12px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  transition: all 0.4s;
+  flex-shrink: 0;
+}
+#status-bar-worst.nominal  { color: #6ab0c0; border-color: #1e3a4f; }
+#status-bar-worst.warn     { color: var(--col-warn-fg);  border-color: var(--col-warn-fg);  background: rgba(240,160,32,0.07); }
+#status-bar-worst.alert    { color: var(--col-alert-fg); border-color: var(--col-alert-fg); background: rgba(255,90,32,0.07);  }
+#status-bar-worst.critical {
+  color: var(--col-crit-fg);
+  border-color: var(--col-crit-fg);
+  background: rgba(255,32,32,0.08);
+  animation: blink 1.4s step-end infinite;
 }
 #hub-status {
   font-size: 11px;
@@ -661,17 +721,29 @@ body::before {
 
 <!-- ── Header ────────────────────────────────────────────────────────────── -->
 <div id="header">
-  <div id="header-left">
-    <div id="header-logo">AEGIS</div>
-    <div id="header-sub">CREW HEALTH MONITORING SYSTEM · LONG-DURATION MISSION</div>
-  </div>
-  <div id="header-right">
-    <div id="livesim-badge"><div class="dot connected"></div> LIVE SIM</div>
-    <div id="mission-clock">T+ --:--:--</div>
-    <div id="hub-status">
-      <div class="dot" id="hub-dot"></div>
-      <span id="hub-label">CONNECTING</span>
+  <div id="header-top">
+    <div id="header-left">
+      <div id="header-logo">AEGIS</div>
+      <div id="header-sub">CREW HEALTH MONITORING SYSTEM · LONG-DURATION MISSION</div>
     </div>
+    <div id="header-right">
+      <div id="livesim-badge"><div class="dot connected"></div> LIVE SIM</div>
+      <div id="mission-clock">T+ --:--:--</div>
+      <div id="hub-status">
+        <div class="dot" id="hub-dot"></div>
+        <span id="hub-label">CONNECTING</span>
+      </div>
+    </div>
+  </div>
+  <div id="status-bar">
+    <span id="status-bar-label">CREW STATUS</span>
+    <div id="status-bar-summary">
+      <span class="status-pill nominal"><span class="dot connected"></span><span id="sb-nominal">-- NOMINAL</span></span>
+      <span class="status-pill warn"   id="sb-warn-pill"   style="display:none"><span class="dot" style="background:var(--col-warn-fg)"></span><span id="sb-warn">0 WARNING</span></span>
+      <span class="status-pill alert"  id="sb-alert-pill"  style="display:none"><span class="dot" style="background:var(--col-alert-fg)"></span><span id="sb-alert">0 ALERT</span></span>
+      <span class="status-pill critical" id="sb-crit-pill" style="display:none"><span class="dot" style="background:var(--col-crit-fg);box-shadow:0 0 5px var(--col-crit-glow)"></span><span id="sb-crit">0 CRITICAL</span></span>
+    </div>
+    <div id="status-bar-worst" class="nominal">ALL SYSTEMS NOMINAL</div>
   </div>
 </div>
 
@@ -752,6 +824,53 @@ const METRICS = [
 const sparkHistory = {};
 // Max points visible on sparkline
 const SPARK_POINTS = 30;
+
+// Ship-wide composite scores: astronautId → score (updated on every status fetch)
+const crewScores = {};
+
+function updateStatusBar() {
+  let nominal = 0, warn = 0, alert = 0, crit = 0;
+
+  ASTRONAUTS.forEach(a => {
+    const score = crewScores[a.id] ?? 0;
+    if      (score >= 6) crit++;
+    else if (score >= 4) alert++;
+    else if (score >= 2) warn++;
+    else                 nominal++;
+  });
+
+  // Pill counts
+  document.getElementById('sb-nominal').textContent =
+    `${nominal} NOMINAL`;
+  document.getElementById('sb-warn').textContent =
+    `${warn} WARNING`;
+  document.getElementById('sb-alert').textContent =
+    `${alert} ALERT`;
+  document.getElementById('sb-crit').textContent =
+    `${crit} CRITICAL`;
+
+  // Show/hide non-nominal pills
+  document.getElementById('sb-warn-pill').style.display  = warn  > 0 ? '' : 'none';
+  document.getElementById('sb-alert-pill').style.display = alert > 0 ? '' : 'none';
+  document.getElementById('sb-crit-pill').style.display  = crit  > 0 ? '' : 'none';
+
+  // Worst-case badge
+  const worst = document.getElementById('status-bar-worst');
+  worst.className = '';   // clear all classes
+  if (crit > 0) {
+    worst.classList.add('critical');
+    worst.textContent = `⚠ ${crit} CRITICAL · IMMEDIATE ACTION REQUIRED`;
+  } else if (alert > 0) {
+    worst.classList.add('alert');
+    worst.textContent = `▲ ${alert} ALERT · AI INTERVENTION ACTIVE`;
+  } else if (warn > 0) {
+    worst.classList.add('warn');
+    worst.textContent = `${warn} WARNING · MONITORING ELEVATED`;
+  } else {
+    worst.classList.add('nominal');
+    worst.textContent = 'ALL SYSTEMS NOMINAL';
+  }
+}
 
 // ── Mission clock ────────────────────────────────────────────────────────────
 const MISSION_START = Date.now();
@@ -968,6 +1087,10 @@ async function fetchReadingHistory(astro) {
 function updateCard(astro, statusData) {
   const score   = statusData.compositeRiskScore ?? 0;
   const latest  = statusData.latestReadings ?? [];
+
+  // Track crew-wide scores for the status bar
+  crewScores[astro.id] = score;
+  updateStatusBar();
   const missionDay = statusData.missionStartDate
     ? Math.floor((Date.now() - new Date(statusData.missionStartDate)) / 86400000)
     : '--';
