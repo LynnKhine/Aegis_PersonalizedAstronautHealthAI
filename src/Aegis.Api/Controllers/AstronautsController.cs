@@ -14,15 +14,18 @@ public sealed class AstronautsController : ControllerBase
     private readonly IAstronautRepository        _astronauts;
     private readonly IBiometricReadingRepository _readings;
     private readonly IInterventionPlanRepository _plans;
+    private readonly IPersonalBaselineRepository _baselines;
 
     public AstronautsController(
         IAstronautRepository astronauts,
         IBiometricReadingRepository readings,
-        IInterventionPlanRepository plans)
+        IInterventionPlanRepository plans,
+        IPersonalBaselineRepository baselines)
     {
         _astronauts = astronauts;
         _readings   = readings;
         _plans      = plans;
+        _baselines  = baselines;
     }
 
     /// <summary>GET /api/astronauts/{id}/status</summary>
@@ -69,6 +72,28 @@ public sealed class AstronautsController : ControllerBase
         const int pageSize = 50;
         var readings = await _readings.GetPagedAsync(id, metric, page, pageSize, ct);
         return Ok(readings);
+    }
+
+    /// <summary>GET /api/astronauts/{id}/metric-history?metric=HRV&amp;days=60 — full history + personal baseline, for the sparkline zoom view.</summary>
+    [HttpGet("{id:guid}/metric-history")]
+    public async Task<IActionResult> GetMetricHistory(
+        Guid id,
+        [FromQuery] MetricType metric,
+        [FromQuery] int days = 60,
+        CancellationToken ct = default)
+    {
+        if (await _astronauts.GetByIdAsync(id, ct) is null) return NotFound();
+
+        var recent = await _readings.GetByAstronautAndMetricAsync(id, metric, ct);
+        var points = recent
+            .Take(Math.Clamp(days, 1, 365))
+            .OrderBy(r => r.RecordedAt)
+            .Select(r => new MetricHistoryPoint(r.Value, r.ZScore, r.Severity, r.RecordedAt))
+            .ToList();
+
+        var baseline = await _baselines.GetAsync(id, metric, ct);
+
+        return Ok(new MetricHistoryResponse(metric, baseline?.Mean, baseline?.StdDev, points));
     }
 
     /// <summary>GET /api/astronauts/{id}/interventions — mission log.</summary>

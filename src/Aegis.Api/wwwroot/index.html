@@ -399,7 +399,12 @@ body::before {
   grid-template-columns: 88px 52px 36px 1fr;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.12s;
 }
+.metric-row:hover { background: rgba(106,176,192,0.08); }
+.metric-row:hover .metric-label { color: var(--text-bright); }
 .metric-label {
   font-size: 10px;
   letter-spacing: 0.12em;
@@ -731,6 +736,60 @@ body::before {
 #voice-toggle:hover { border-color: #9accd8; color: var(--text-bright); }
 #voice-toggle.on    { color: #20c050; border-color: #20c05070; }
 #voice-toggle.speaking { color: var(--col-alert-fg); border-color: var(--col-alert-fg); }
+
+/* ── Sparkline zoom / history modal ─────────────────────────────────────── */
+.zoom-modal {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(2,6,9,0.75);
+  backdrop-filter: blur(2px);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.zoom-modal.visible { display: flex; }
+.zoom-modal-content {
+  width: min(720px, 92vw);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  box-shadow: 0 0 40px rgba(0,0,0,0.6);
+  padding: 16px 18px 18px;
+}
+.zoom-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+#zoom-modal-title {
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  color: var(--text-bright);
+}
+#zoom-modal-sub {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.zoom-modal-close {
+  cursor: pointer;
+  color: #6ab0c0;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.zoom-modal-close:hover { color: var(--text-bright); }
+.zoom-chart { width: 100%; height: 280px; display: block; }
+.zoom-legend {
+  display: flex; flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.zoom-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.zoom-legend .sw { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 </style>
 </head>
 <body>
@@ -766,6 +825,27 @@ body::before {
 
 <!-- ── Card grid ──────────────────────────────────────────────────────────── -->
 <div id="grid"></div>
+
+<!-- ── Sparkline zoom / history modal ────────────────────────────────────── -->
+<div class="zoom-modal" id="zoom-modal" onclick="if (event.target === this) closeZoomModal()">
+  <div class="zoom-modal-content">
+    <div class="zoom-modal-head">
+      <div>
+        <div id="zoom-modal-title">METRIC HISTORY</div>
+        <div id="zoom-modal-sub"></div>
+      </div>
+      <span class="zoom-modal-close" onclick="closeZoomModal()">✕</span>
+    </div>
+    <canvas class="zoom-chart" id="zoom-chart"></canvas>
+    <div class="zoom-legend">
+      <span><span class="sw" style="background:#2a8090"></span>READING</span>
+      <span><span class="sw" style="background:#6ab0c0"></span>PERSONAL BASELINE (μ)</span>
+      <span><span class="sw" style="background:rgba(240,160,32,0.5)"></span>WARNING BAND (1.5–2σ)</span>
+      <span><span class="sw" style="background:rgba(255,90,32,0.5)"></span>ALERT BAND (2–3σ)</span>
+      <span><span class="sw" style="background:rgba(255,32,32,0.5)"></span>CRITICAL BAND (&gt;3σ)</span>
+    </div>
+  </div>
+</div>
 
 <!-- ── Footer ────────────────────────────────────────────────────────────── -->
 <div id="footer">
@@ -1006,6 +1086,130 @@ function drawSparkline(canvas, values, sevClass_) {
   ctx.fill();
 }
 
+// ── Sparkline zoom / history modal ─────────────────────────────────────────────
+async function openZoomModal(astro, metric) {
+  const modal = document.getElementById('zoom-modal');
+  const title = document.getElementById('zoom-modal-title');
+  const sub   = document.getElementById('zoom-modal-sub');
+
+  title.textContent = `${astro.name.toUpperCase()} · ${metric.label} · 60-DAY HISTORY`;
+  sub.textContent = 'LOADING…';
+  modal.classList.add('visible');
+
+  try {
+    const res = await fetch(`${API_BASE}/api/astronauts/${astro.id}/metric-history?metric=${metric.key}&days=60`);
+    if (!res.ok) { sub.textContent = 'NO DATA AVAILABLE'; return; }
+
+    const data = await res.json();
+    if (!data.points || data.points.length < 2) { sub.textContent = 'INSUFFICIENT HISTORY'; return; }
+
+    const meanText = data.baselineMean  != null ? data.baselineMean.toFixed(metric.decimals)  : '--';
+    const sdText   = data.baselineStdDev != null ? data.baselineStdDev.toFixed(metric.decimals) : '--';
+    sub.textContent = `${data.points.length} READINGS · PERSONAL BASELINE μ=${meanText} σ=${sdText}`;
+
+    const canvas = document.getElementById('zoom-chart');
+    drawZoomChart(canvas, data.points, data.baselineMean, data.baselineStdDev, metric);
+  } catch (e) {
+    sub.textContent = 'NETWORK ERROR';
+    console.warn('openZoomModal failed', e);
+  }
+}
+
+function closeZoomModal() {
+  document.getElementById('zoom-modal').classList.remove('visible');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeZoomModal();
+});
+
+function drawZoomChart(canvas, points, mean, stdDev, metric) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.clientWidth  || 680;
+  const h = canvas.clientHeight || 280;
+  canvas.width  = w;
+  canvas.height = h;
+  ctx.clearRect(0, 0, w, h);
+
+  const values = points.map(p => p.value);
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+
+  // Widen the range so the sigma bands stay visible even if no reading reaches them
+  if (mean != null && stdDev > 0) {
+    min = Math.min(min, mean - 3.2 * stdDev);
+    max = Math.max(max, mean + 3.2 * stdDev);
+  }
+  const range = (max - min) || 1;
+  const padTop = 10, padBottom = 22, padLeft = 4, padRight = 4;
+  const plotH = h - padTop - padBottom;
+  const plotW = w - padLeft - padRight;
+
+  const yOf = v => padTop + plotH - ((v - min) / range) * plotH;
+  const xOf = i => padLeft + (points.length === 1 ? 0 : (i / (points.length - 1)) * plotW);
+
+  // ── Baseline sigma bands (why this spike matters relative to their normal) ──
+  if (mean != null && stdDev > 0) {
+    const bands = [
+      { from: 3,   to: 3.2, color: 'rgba(255,32,32,0.16)'  },  // critical
+      { from: 2,   to: 3,   color: 'rgba(255,90,32,0.13)'  },  // alert
+      { from: 1.5, to: 2,   color: 'rgba(240,160,32,0.12)' },  // warning
+    ];
+    bands.forEach(b => {
+      const yTopUp = yOf(mean + b.to * stdDev), yBotUp = yOf(mean + b.from * stdDev);
+      ctx.fillStyle = b.color;
+      ctx.fillRect(padLeft, yTopUp, plotW, yBotUp - yTopUp);
+
+      const yTopDn = yOf(mean - b.from * stdDev), yBotDn = yOf(mean - b.to * stdDev);
+      ctx.fillRect(padLeft, yTopDn, plotW, yBotDn - yTopDn);
+    });
+
+    ctx.strokeStyle = '#6ab0c0';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(padLeft, yOf(mean));
+    ctx.lineTo(padLeft + plotW, yOf(mean));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // ── Reading line ──────────────────────────────────────────────────────────
+  ctx.strokeStyle = '#2a8090';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const x = xOf(i), y = yOf(p.value);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // point dots, colored by that reading's own severity
+  const dotColor = { critical: '#ff2020', alert: '#ff5a20', warn: '#f0a020' };
+  points.forEach((p, i) => {
+    const x = xOf(i), y = yOf(p.value);
+    const sc = sevClass(p.severity);
+    ctx.beginPath();
+    ctx.arc(x, y, sc ? 2.6 : 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = dotColor[sc] || '#5a9ab0';
+    ctx.fill();
+  });
+
+  // ── Axis labels ──────────────────────────────────────────────────────────
+  ctx.fillStyle = '#5a8898';
+  ctx.font = '10px "Courier New", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(max.toFixed(metric.decimals), padLeft, padTop + 8);
+  ctx.fillText(min.toFixed(metric.decimals), padLeft, padTop + plotH - 2);
+
+  const first = new Date(points[0].recordedAt);
+  const last  = new Date(points[points.length - 1].recordedAt);
+  ctx.textAlign = 'left';
+  ctx.fillText(first.toISOString().slice(0, 10), padLeft, h - 6);
+  ctx.textAlign = 'right';
+  ctx.fillText(last.toISOString().slice(0, 10), padLeft + plotW, h - 6);
+}
+
 // ── DOM builder ──────────────────────────────────────────────────────────────
 function buildCard(astro) {
   sparkHistory[astro.id] = {};
@@ -1167,6 +1371,8 @@ function updateCard(astro, statusData) {
 
     const row = document.createElement('div');
     row.className = 'metric-row';
+    row.title = `Click to view ${m.label} history`;
+    row.onclick = () => openZoomModal(astro, m);
     row.innerHTML = `
       <div class="metric-label">${m.label}</div>
       <div class="metric-val ${sc}">${valText}</div>
