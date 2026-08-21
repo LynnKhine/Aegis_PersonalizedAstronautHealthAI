@@ -76,3 +76,4 @@ C:\Users\User\Downloads\IBM\IBM_build_project\Aegis_PersonalizedAstronautHealthA
 C:\Users\User\Downloads\IBM\IBM_build_project\Aegis_PersonalizedAstronautHealthAI\src\Aegis.Api\obj\Debug\net8.0\Aegis.Api.pdb
 C:\Users\User\Downloads\IBM\IBM_build_project\Aegis_PersonalizedAstronautHealthAI\src\Aegis.Api\obj\Debug\net8.0\Aegis.Api.genruntimeconfig.cache
 C:\Users\User\Downloads\IBM\IBM_build_project\Aegis_PersonalizedAstronautHealthAI\src\Aegis.Api\obj\Debug\net8.0\ref\Aegis.Api.dll
+C:\Users\User\Downloads\IBM\IBM_build_project\Aegis_PersonalizedAstronautHealthAI\src\Aegis.Api\bin\Debug\net8.0\Aegis.Api.staticwebassets.runtime.json

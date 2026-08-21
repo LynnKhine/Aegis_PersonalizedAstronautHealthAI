@@ -25,6 +25,10 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new() { Title = "Aegis Health API", Version = "v1" });
 });
 
+// Allow the dashboard to talk to the API when opened from a file or different port
+builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>
+    p.SetIsOriginAllowed(_ => true).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+
 var app = builder.Build();
 
 // ─── Auto-migrate on startup ──────────────────────────────────────────────────
@@ -41,6 +45,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseCors();
+app.UseDefaultFiles();   // serves wwwroot/index.html on /
+app.UseStaticFiles();    // serves wwwroot/**
 app.UseHttpsRedirection();
 app.MapControllers();
 app.MapHub<AegisHub>("/hubs/aegis");

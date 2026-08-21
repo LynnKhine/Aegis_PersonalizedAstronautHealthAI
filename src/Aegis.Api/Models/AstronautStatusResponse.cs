@@ -6,6 +6,7 @@ public sealed record AstronautStatusResponse(
     Guid AstronautId,
     string Name,
     string NASAId,
+    DateTime MissionStartDate,
     int CompositeRiskScore,
     IReadOnlyList<LatestMetricReading> LatestReadings
 );

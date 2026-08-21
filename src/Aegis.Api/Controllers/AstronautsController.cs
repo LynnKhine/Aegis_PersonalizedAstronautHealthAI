@@ -46,6 +46,7 @@ public sealed class AstronautsController : ControllerBase
             astronaut.Id,
             astronaut.Name,
             astronaut.NASAId,
+            astronaut.MissionStartDate,
             compositeScore,
             latestReadings));
     }

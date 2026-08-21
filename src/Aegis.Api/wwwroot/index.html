@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AEGIS · Crew Health Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+<style>
+/* ── Reset & Base ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #050a0e;
+  --bg-panel:    #080f14;
+  --bg-card:     #0b1520;
+  --bg-card-alt: #0d1a24;
+  --border:      #1a2e3e;
+  --border-bright: #1e3a4f;
+  --dim:         #2a4a5e;
+  --text-muted:  #4a7a8a;
+  --text-mid:    #7ab0c0;
+  --text:        #b8d8e8;
+  --text-bright: #d8eef8;
+  --mono:        "Courier New", "Lucida Console", monospace;
+
+  /* status colors — used ONLY for deviating states */
+  --col-none:     #1e3a4f;
+  --col-none-fg:  #4a7a8a;
+  --col-warn:     #7a5500;
+  --col-warn-fg:  #f0a020;
+  --col-alert:    #8b2500;
+  --col-alert-fg: #ff5a20;
+  --col-crit:     #6b0000;
+  --col-crit-fg:  #ff2020;
+  --col-crit-glow:#ff202060;
+
+  --grid-min: 320px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-x: hidden;
+}
+
+/* ── Scanline overlay ──────────────────────────────────────────────────── */
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────── */
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  letter-spacing: 0.12em;
+}
+#header-left { display: flex; align-items: center; gap: 16px; }
+#header-logo {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-bright);
+  letter-spacing: 0.3em;
+}
+#header-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.18em;
+}
+#header-right { display: flex; align-items: center; gap: 20px; }
+#mission-clock {
+  font-size: 15px;
+  color: var(--text-mid);
+  letter-spacing: 0.1em;
+}
+#hub-status {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  display: flex; align-items: center; gap: 6px;
+}
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex-shrink: 0;
+}
+.dot.connected { background: #20c050; box-shadow: 0 0 6px #20c05080; }
+.dot.error     { background: var(--col-crit-fg); box-shadow: 0 0 6px var(--col-crit-glow); }
+
+/* ── Main grid ─────────────────────────────────────────────────────────── */
+#grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--grid-min), 1fr));
+  gap: 1px;
+  padding: 1px;
+  background: var(--border);
+}
+
+/* ── Astronaut Card ────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  transition: background 0.4s ease;
+  min-height: 360px;
+}
+
+/* alert state */
+.card.warn    { background: #0e0c00; }
+.card.alert   { background: #100500; }
+.card.critical {
+  background: #0e0000;
+  animation: crit-pulse 2s ease-in-out infinite;
+}
+@keyframes crit-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px transparent; }
+  50%       { box-shadow: inset 0 0 0 1px var(--col-crit-fg); }
+}
+
+/* ── Card header ───────────────────────────────────────────────────────── */
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+.card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-bright);
+  letter-spacing: 0.08em;
+}
+.card-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  margin-top: 2px;
+}
+.card-conn {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  display: flex; align-items: center; gap: 5px;
+  text-align: right;
+}
+
+/* ── Composite risk bar ────────────────────────────────────────────────── */
+.risk-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.risk-label {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  width: 56px;
+  flex-shrink: 0;
+}
+.risk-track {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.risk-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 1px;
+  transition: width 0.6s ease, background 0.6s ease;
+  background: var(--col-none-fg);
+}
+.risk-val {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.risk-tier {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  width: 52px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Metric rows ───────────────────────────────────────────────────────── */
+.metrics { display: flex; flex-direction: column; gap: 8px; }
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 88px 52px 36px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+.metric-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+}
+.metric-val {
+  font-size: 13px;
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.4s ease;
+}
+.metric-val.warn     { color: var(--col-warn-fg); }
+.metric-val.alert    { color: var(--col-alert-fg); }
+.metric-val.critical { color: var(--col-crit-fg); }
+.metric-sev {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  padding: 1px 0;
+  border-radius: 2px;
+  color: var(--text-muted);
+  background: transparent;
+  transition: all 0.4s ease;
+}
+.metric-sev.warn     { color: var(--col-warn-fg); background: rgba(240,160,32,0.12); }
+.metric-sev.alert    { color: var(--col-alert-fg); background: rgba(255,90,32,0.12); }
+.metric-sev.critical { color: var(--col-crit-fg); background: rgba(255,32,32,0.14); }
+
+/* Sparkline canvas */
+.sparkline { width: 100%; height: 28px; display: block; }
+
+/* ── Intervention alert panel ──────────────────────────────────────────── */
+.alert-panel {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border-bright);
+  padding-top: 10px;
+  animation: slide-in 0.5s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+.alert-panel.visible { display: flex; }
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.alert-header {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--col-alert-fg);
+}
+.alert-header::before {
+  content: "▲";
+  font-size: 9px;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+.alert-summary {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  border-left: 2px solid var(--col-alert-fg);
+  padding-left: 8px;
+}
+
+.alert-actions-label {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.alert-actions { display: flex; flex-direction: column; gap: 4px; }
+.alert-action {
+  display: flex; align-items: flex-start; gap: 7px;
+  font-size: 11px;
+  color: var(--text-mid);
+}
+.alert-action::before {
+  content: "□";
+  font-size: 10px;
+  color: var(--col-alert-fg);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.alert-meta {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.alert-freq {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+}
+.badge-surgeon {
+  display: none;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--col-crit-fg);
+  background: rgba(255,32,32,0.1);
+  border: 1px solid var(--col-crit-fg);
+  padding: 2px 8px;
+  border-radius: 2px;
+  animation: blink 1.4s step-end infinite;
+}
+.badge-surgeon.visible { display: inline-block; }
+
+/* ── No-data state ─────────────────────────────────────────────────────── */
+.no-data {
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.15em;
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+#footer {
+  padding: 8px 20px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.15em;
+  display: flex; justify-content: space-between;
+  background: var(--bg-panel);
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────────────────── -->
+<div id="header">
+  <div id="header-left">
+    <div id="header-logo">AEGIS</div>
+    <div id="header-sub">CREW HEALTH MONITORING SYSTEM · LONG-DURATION MISSION</div>
+  </div>
+  <div id="header-right">
+    <div id="mission-clock">T+ --:--:--</div>
+    <div id="hub-status">
+      <div class="dot" id="hub-dot"></div>
+      <span id="hub-label">CONNECTING</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Card grid ──────────────────────────────────────────────────────────── -->
+<div id="grid"></div>
+
+<!-- ── Footer ────────────────────────────────────────────────────────────── -->
+<div id="footer">
+  <span>AEGIS v1.0 · IBM WATSONX.AI POWERED</span>
+  <span id="last-update">LAST UPDATE: --</span>
+</div>
+
+<script>
+'use strict';
+
+// ── Config ──────────────────────────────────────────────────────────────────
+const API_BASE   = '';   // same origin
+const HUB_URL    = '/hubs/aegis';
+const POLL_MS    = 8000; // re-poll status every 8 s
+
+// Seeded astronauts — IDs match the seeder output
+const ASTRONAUTS = [
+  { id: '974fd6a0-e405-49ef-95c5-44ce871ad381', name: 'Elena Vasquez',    nasaId: 'NASA-001' },
+  { id: '5f6a5361-140b-4bab-8b06-215a268ecb39', name: 'Marcus Chen',      nasaId: 'NASA-002' },
+  { id: '91e60a36-1ba3-4ef7-a7c0-46f490bf5d12', name: 'Priya Nair',       nasaId: 'NASA-003' },
+  { id: '2adf171e-b640-461c-b0dc-125a504682ae', name: "James O'Sullivan", nasaId: 'NASA-004' },
+  { id: '42513d60-3cf0-4575-8767-999ea276510f', name: 'Aiko Tanaka',       nasaId: 'NASA-005' },
+];
+
+const METRICS = [
+  { key: 'HRV',              label: 'HRV',     unit: 'ms', decimals: 1 },
+  { key: 'SleepQuality',     label: 'SLEEP Q', unit: '',   decimals: 1 },
+  { key: 'BoneDensityIndex', label: 'BONE DX', unit: '',   decimals: 3 },
+  { key: 'MoodStressScore',  label: 'MOOD/STR',unit: '',   decimals: 1 },
+];
+
+// Per-card sparkline history: card[astroId][metricKey] = [values...]
+const sparkHistory = {};
+// Max points visible on sparkline
+const SPARK_POINTS = 30;
+
+// ── Mission clock ────────────────────────────────────────────────────────────
+const MISSION_START = Date.now();
+function updateClock() {
+  const elapsed = Math.floor((Date.now() - MISSION_START) / 1000);
+  const h = String(Math.floor(elapsed / 3600)).padStart(2,'0');
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2,'0');
+  const s = String(elapsed % 60).padStart(2,'0');
+  document.getElementById('mission-clock').textContent = `T+ ${h}:${m}:${s}`;
+}
+setInterval(updateClock, 1000);
+
+// ── Severity helpers ─────────────────────────────────────────────────────────
+function sevClass(sev) {
+  if (!sev) return '';
+  const s = sev.toLowerCase();
+  if (s === 'critical') return 'critical';
+  if (s === 'alert')    return 'alert';
+  if (s === 'warning')  return 'warn';
+  return '';
+}
+
+function compositeColor(score) {
+  if (score >= 6) return 'var(--col-crit-fg)';
+  if (score >= 4) return 'var(--col-alert-fg)';
+  if (score >= 2) return 'var(--col-warn-fg)';
+  return 'var(--col-none-fg)';
+}
+
+function compositeTierLabel(score) {
+  if (score >= 6) return 'CRITICAL';
+  if (score >= 4) return 'ALERT';
+  if (score >= 2) return 'WARNING';
+  return 'NOMINAL';
+}
+
+function compositeTierClass(score) {
+  if (score >= 6) return 'critical';
+  if (score >= 4) return 'alert';
+  if (score >= 2) return 'warn';
+  return '';
+}
+
+// ── Sparkline renderer ────────────────────────────────────────────────────────
+function drawSparkline(canvas, values, sevClass_) {
+  const ctx  = canvas.getContext('2d');
+  const w    = canvas.offsetWidth  || 120;
+  const h    = canvas.offsetHeight || 28;
+  canvas.width  = w;
+  canvas.height = h;
+  ctx.clearRect(0, 0, w, h);
+
+  if (!values || values.length < 2) {
+    ctx.fillStyle = 'rgba(42,74,94,0.4)';
+    ctx.fillRect(0, h/2 - 0.5, w, 1);
+    return;
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+
+  const xStep = w / (values.length - 1);
+  const pad   = 3;
+
+  // fill
+  ctx.beginPath();
+  ctx.moveTo(0, h - pad - ((values[0] - min) / range) * (h - pad * 2));
+  for (let i = 1; i < values.length; i++) {
+    const x = i * xStep;
+    const y = h - pad - ((values[i] - min) / range) * (h - pad * 2);
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+
+  let fillColor = 'rgba(30,58,79,0.5)';
+  if (sevClass_ === 'critical') fillColor = 'rgba(255,32,32,0.15)';
+  else if (sevClass_ === 'alert')  fillColor = 'rgba(255,90,32,0.13)';
+  else if (sevClass_ === 'warn')   fillColor = 'rgba(240,160,32,0.12)';
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+
+  // line
+  ctx.beginPath();
+  ctx.moveTo(0, h - pad - ((values[0] - min) / range) * (h - pad * 2));
+  for (let i = 1; i < values.length; i++) {
+    const x = i * xStep;
+    const y = h - pad - ((values[i] - min) / range) * (h - pad * 2);
+    ctx.lineTo(x, y);
+  }
+  let lineColor = '#2a5a6e';
+  if (sevClass_ === 'critical') lineColor = 'var(--col-crit-fg)';
+  else if (sevClass_ === 'alert')  lineColor = 'var(--col-alert-fg)';
+  else if (sevClass_ === 'warn')   lineColor = 'var(--col-warn-fg)';
+
+  // resolve CSS variables to actual colors for canvas (canvas can't use CSS vars)
+  const colorMap = {
+    'var(--col-crit-fg)':  '#ff2020',
+    'var(--col-alert-fg)': '#ff5a20',
+    'var(--col-warn-fg)':  '#f0a020',
+  };
+  lineColor = colorMap[lineColor] || lineColor;
+
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // last point dot
+  const lx = (values.length - 1) * xStep;
+  const ly = h - pad - ((values[values.length-1] - min) / range) * (h - pad * 2);
+  ctx.beginPath();
+  ctx.arc(lx, ly, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = colorMap[lineColor] || lineColor || '#2a8090';
+  ctx.fill();
+}
+
+// ── DOM builder ──────────────────────────────────────────────────────────────
+function buildCard(astro) {
+  sparkHistory[astro.id] = {};
+  METRICS.forEach(m => sparkHistory[astro.id][m.key] = []);
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.id = `card-${astro.id}`;
+
+  card.innerHTML = `
+    <div class="card-head">
+      <div>
+        <div class="card-name">${astro.name.toUpperCase()}</div>
+        <div class="card-meta">${astro.nasaId} · MISSION DAY <span class="mission-day">--</span></div>
+      </div>
+      <div class="card-conn">
+        <div class="dot" id="conn-${astro.id}"></div>
+        <span id="connlabel-${astro.id}">OFFLINE</span>
+      </div>
+    </div>
+
+    <div class="risk-row">
+      <div class="risk-label">RISK</div>
+      <div class="risk-track"><div class="risk-fill" id="riskfill-${astro.id}"></div></div>
+      <div class="risk-val" id="riskval-${astro.id}">--</div>
+      <div class="risk-tier" id="risktier-${astro.id}">--</div>
+    </div>
+
+    <div class="metrics" id="metrics-${astro.id}">
+      <div class="no-data">AWAITING TELEMETRY</div>
+    </div>
+
+    <div class="alert-panel" id="alert-${astro.id}">
+      <div class="alert-header">INTERVENTION PLAN GENERATED</div>
+      <div class="alert-summary" id="alertsum-${astro.id}"></div>
+      <div class="alert-actions-label">IMMEDIATE ACTIONS</div>
+      <div class="alert-actions" id="alertact-${astro.id}"></div>
+      <div class="alert-meta">
+        <div class="alert-freq">MONITOR: <span id="alertfreq-${astro.id}"></span></div>
+        <div class="badge-surgeon" id="badge-${astro.id}">ESCALATE · FLIGHT SURGEON</div>
+      </div>
+    </div>
+  `;
+
+  return card;
+}
+
+function initGrid() {
+  const grid = document.getElementById('grid');
+  ASTRONAUTS.forEach(a => grid.appendChild(buildCard(a)));
+}
+
+// ── Status update ────────────────────────────────────────────────────────────
+async function fetchStatus(astro) {
+  try {
+    const res = await fetch(`${API_BASE}/api/astronauts/${astro.id}/status`);
+    if (!res.ok) return;
+    const data = await res.json();
+    updateCard(astro, data);
+  } catch (e) {
+    console.warn('fetchStatus failed', astro.nasaId, e);
+  }
+}
+
+async function fetchReadingHistory(astro) {
+  try {
+    for (const metric of METRICS) {
+      const res = await fetch(
+        `${API_BASE}/api/astronauts/${astro.id}/readings?metric=${metric.key}&page=1`
+      );
+      if (!res.ok) continue;
+      const readings = await res.json();
+      // readings come back newest-first from the API — reverse for chronological spark
+      const vals = readings.slice(0, SPARK_POINTS).reverse().map(r => r.value);
+      sparkHistory[astro.id][metric.key] = vals;
+    }
+  } catch (e) {
+    console.warn('fetchReadingHistory failed', astro.nasaId, e);
+  }
+}
+
+function updateCard(astro, statusData) {
+  const score   = statusData.compositeRiskScore ?? 0;
+  const latest  = statusData.latestReadings ?? [];
+  const missionDay = statusData.missionStartDate
+    ? Math.floor((Date.now() - new Date(statusData.missionStartDate)) / 86400000)
+    : '--';
+
+  // Mission day
+  const card = document.getElementById(`card-${astro.id}`);
+  const dayEl = card.querySelector('.mission-day');
+  if (dayEl) dayEl.textContent = typeof missionDay === 'number' ? missionDay : '--';
+
+  // Card-level severity class
+  card.classList.remove('warn','alert','critical');
+  const tc = compositeTierClass(score);
+  if (tc) card.classList.add(tc);
+
+  // Risk bar
+  const maxScore = 12; // 4 metrics × max 3
+  const pct = Math.min(100, (score / maxScore) * 100);
+  const fill = document.getElementById(`riskfill-${astro.id}`);
+  if (fill) {
+    fill.style.width = `${pct}%`;
+    fill.style.background = compositeColor(score);
+  }
+  const riskVal = document.getElementById(`riskval-${astro.id}`);
+  if (riskVal) riskVal.textContent = score;
+  const riskTier = document.getElementById(`risktier-${astro.id}`);
+  if (riskTier) {
+    riskTier.textContent = compositeTierLabel(score);
+    riskTier.style.color = compositeColor(score);
+  }
+
+  // Metric rows
+  const metricsEl = document.getElementById(`metrics-${astro.id}`);
+  if (!metricsEl) return;
+
+  if (!latest.length) {
+    metricsEl.innerHTML = '<div class="no-data">AWAITING TELEMETRY</div>';
+    return;
+  }
+
+  metricsEl.innerHTML = '';
+  METRICS.forEach(m => {
+    const reading = latest.find(r => r.metricType === m.key);
+    const value   = reading?.value;
+    const sev     = reading?.severity ?? 'None';
+    const sc      = sevClass(sev);
+
+    // push to sparkline history
+    if (value !== undefined) {
+      const hist = sparkHistory[astro.id][m.key];
+      hist.push(value);
+      if (hist.length > SPARK_POINTS) hist.shift();
+    }
+
+    const valText = value !== undefined
+      ? value.toFixed(m.decimals)
+      : '--';
+
+    const row = document.createElement('div');
+    row.className = 'metric-row';
+    row.innerHTML = `
+      <div class="metric-label">${m.label}</div>
+      <div class="metric-val ${sc}">${valText}</div>
+      <div class="metric-sev ${sc}">${sev.toUpperCase().slice(0,4)}</div>
+      <canvas class="sparkline" id="spark-${astro.id}-${m.key}"></canvas>
+    `;
+    metricsEl.appendChild(row);
+  });
+
+  // Draw sparklines after they're in the DOM
+  requestAnimationFrame(() => {
+    METRICS.forEach(m => {
+      const reading = latest.find(r => r.metricType === m.key);
+      const sev     = reading?.severity ?? 'None';
+      const canvas  = document.getElementById(`spark-${astro.id}-${m.key}`);
+      if (canvas) drawSparkline(canvas, sparkHistory[astro.id][m.key], sevClass(sev));
+    });
+  });
+
+  // Last update
+  document.getElementById('last-update').textContent =
+    `LAST UPDATE: ${new Date().toISOString().replace('T',' ').slice(0,19)} UTC`;
+}
+
+// ── Intervention plan display ────────────────────────────────────────────────
+function showIntervention(astronautId, plan) {
+  const panel   = document.getElementById(`alert-${astronautId}`);
+  const sumEl   = document.getElementById(`alertsum-${astronautId}`);
+  const actEl   = document.getElementById(`alertact-${astronautId}`);
+  const freqEl  = document.getElementById(`alertfreq-${astronautId}`);
+  const badgeEl = document.getElementById(`badge-${astronautId}`);
+
+  if (!panel) return;
+
+  // Parse ImmediateActionsJson if it arrived as a string (from SignalR entity)
+  let actions = [];
+  try {
+    actions = typeof plan.immediateActionsJson === 'string'
+      ? JSON.parse(plan.immediateActionsJson)
+      : (plan.immediateActions ?? []);
+  } catch { actions = []; }
+
+  sumEl.textContent  = plan.summary ?? '';
+  freqEl.textContent = plan.monitoringFrequency ?? '';
+
+  actEl.innerHTML = '';
+  actions.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'alert-action';
+    div.textContent = a;
+    actEl.appendChild(div);
+  });
+
+  if (plan.escalateToFlightSurgeon) {
+    badgeEl.classList.add('visible');
+  } else {
+    badgeEl.classList.remove('visible');
+  }
+
+  // Trigger transition: remove then re-add to replay animation
+  panel.classList.remove('visible');
+  void panel.offsetWidth; // force reflow
+  panel.classList.add('visible');
+
+  // Escalate card color if not already critical
+  const card = document.getElementById(`card-${astronautId}`);
+  if (card && !card.classList.contains('critical')) {
+    card.classList.remove('warn');
+    card.classList.add('alert');
+  }
+}
+
+// ── SignalR ──────────────────────────────────────────────────────────────────
+let connection = null;
+
+async function connectHub() {
+  connection = new signalR.HubConnectionBuilder()
+    .withUrl(HUB_URL)
+    .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+    .build();
+
+  connection.on('InterventionPlanGenerated', (plan) => {
+    console.log('[AEGIS] InterventionPlanGenerated', plan);
+    if (plan?.astronautId) {
+      showIntervention(plan.astronautId, plan);
+      // Immediately refresh that astronaut's status card
+      const astro = ASTRONAUTS.find(a => a.id === plan.astronautId);
+      if (astro) fetchStatus(astro);
+    }
+  });
+
+  connection.onreconnecting(() => setHubStatus('RECONNECTING', false));
+  connection.onreconnected(() => {
+    setHubStatus('CONNECTED', true);
+    joinAllGroups();
+  });
+  connection.onclose(() => setHubStatus('DISCONNECTED', false));
+
+  try {
+    await connection.start();
+    setHubStatus('CONNECTED', true);
+    await joinAllGroups();
+  } catch (e) {
+    console.error('[AEGIS] Hub connection failed', e);
+    setHubStatus('ERROR', false, true);
+    setTimeout(connectHub, 5000);
+  }
+}
+
+async function joinAllGroups() {
+  for (const astro of ASTRONAUTS) {
+    try {
+      await connection.invoke('JoinAstronautGroup', astro.id);
+      setConnStatus(astro.id, true);
+    } catch (e) {
+      console.warn('[AEGIS] JoinAstronautGroup failed', astro.id, e);
+      setConnStatus(astro.id, false);
+    }
+  }
+}
+
+function setHubStatus(label, connected, error = false) {
+  document.getElementById('hub-label').textContent = label;
+  const dot = document.getElementById('hub-dot');
+  dot.className = 'dot' + (connected ? ' connected' : error ? ' error' : '');
+}
+
+function setConnStatus(astronautId, connected) {
+  const dot   = document.getElementById(`conn-${astronautId}`);
+  const label = document.getElementById(`connlabel-${astronautId}`);
+  if (dot)   dot.className   = 'dot' + (connected ? ' connected' : '');
+  if (label) label.textContent = connected ? 'ONLINE' : 'OFFLINE';
+}
+
+// ── Polling ──────────────────────────────────────────────────────────────────
+async function pollAll() {
+  for (const astro of ASTRONAUTS) {
+    await fetchStatus(astro);
+  }
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+async function boot() {
+  initGrid();
+
+  // Load spark history first, then status
+  for (const astro of ASTRONAUTS) {
+    await fetchReadingHistory(astro);
+    await fetchStatus(astro);
+  }
+
+  // Connect SignalR hub
+  await connectHub();
+
+  // Ongoing polling
+  setInterval(pollAll, POLL_MS);
+}
+
+boot();
+</script>
+</body>
+</html>
