@@ -715,6 +715,22 @@ body::before {
   display: flex; align-items: center; gap: 5px;
 }
 #livesim-badge .dot { background: #20c050; box-shadow: 0 0 5px #20c05070; }
+
+/* voice readout toggle */
+#voice-toggle {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: #6ab0c0;
+  display: flex; align-items: center; gap: 5px;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 8px;
+}
+#voice-toggle:hover { border-color: #9accd8; color: var(--text-bright); }
+#voice-toggle.on    { color: #20c050; border-color: #20c05070; }
+#voice-toggle.speaking { color: var(--col-alert-fg); border-color: var(--col-alert-fg); }
 </style>
 </head>
 <body>
@@ -728,6 +744,7 @@ body::before {
     </div>
     <div id="header-right">
       <div id="livesim-badge"><div class="dot connected"></div> LIVE SIM</div>
+      <button id="voice-toggle" onclick="toggleVoice()">🔊 VOICE</button>
       <div id="mission-clock">T+ --:--:--</div>
       <div id="hub-status">
         <div class="dot" id="hub-dot"></div>
@@ -1253,6 +1270,10 @@ function showIntervention(astronautId, plan) {
   void panel.offsetWidth; // force reflow
   panel.classList.add('visible');
 
+  // Trigger voice readout
+  const astroName = ASTRONAUTS.find(a => a.id === astronautId)?.name ?? 'Unknown';
+  speakIntervention(astroName, plan);
+
   // Escalate card color if not already critical
   const card = document.getElementById(`card-${astronautId}`);
   if (card && !card.classList.contains('critical')) {
@@ -1452,10 +1473,64 @@ async function refreshLogBadges() {
   }
 }
 
+// ── Voice readout (ship AI text-to-speech) ─────────────────────────────────────
+let voiceEnabled = localStorage.getItem('aegis-voice') !== 'off';
+let shipVoice = null;
+
+function pickShipVoice() {
+  const voices = window.speechSynthesis?.getVoices() ?? [];
+  shipVoice =
+    voices.find(v => /Google UK English Male|Microsoft David|Daniel/i.test(v.name)) ??
+    voices.find(v => v.lang?.startsWith('en') && /male/i.test(v.name)) ??
+    voices.find(v => v.lang?.startsWith('en')) ??
+    voices[0] ?? null;
+}
+if ('speechSynthesis' in window) {
+  pickShipVoice();
+  window.speechSynthesis.onvoiceschanged = pickShipVoice;
+}
+
+function initVoiceToggle() {
+  const btn = document.getElementById('voice-toggle');
+  if (!btn) return;
+  btn.classList.toggle('on', voiceEnabled);
+  btn.textContent = voiceEnabled ? '🔊 VOICE' : '🔇 VOICE';
+}
+
+function toggleVoice() {
+  voiceEnabled = !voiceEnabled;
+  localStorage.setItem('aegis-voice', voiceEnabled ? 'on' : 'off');
+  if (!voiceEnabled) window.speechSynthesis?.cancel();
+  initVoiceToggle();
+}
+
+function speakIntervention(astroName, plan) {
+  if (!voiceEnabled || !('speechSynthesis' in window)) return;
+
+  const urgency = plan.escalateToFlightSurgeon
+    ? 'Flight surgeon escalation required.'
+    : '';
+  const text = `Attention. Intervention alert for ${astroName}. ${plan.summary ?? ''} ${urgency}`;
+
+  const utter = new SpeechSynthesisUtterance(text);
+  if (shipVoice) utter.voice = shipVoice;
+  utter.rate = 0.98;
+  utter.pitch = 0.82;
+  utter.volume = 1;
+
+  const btn = document.getElementById('voice-toggle');
+  utter.onstart = () => btn?.classList.add('speaking');
+  utter.onend   = () => btn?.classList.remove('speaking');
+  utter.onerror = () => btn?.classList.remove('speaking');
+
+  window.speechSynthesis.speak(utter);
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   initGrid();
   initCtrlPanel();
+  initVoiceToggle();
 
   // Load spark history first, then status
   for (const astro of ASTRONAUTS) {
