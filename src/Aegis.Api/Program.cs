@@ -1,0 +1,48 @@
+using Aegis.Api.Hubs;
+using Aegis.Core.Interfaces;
+using Aegis.Core.Services;
+using Aegis.Infrastructure.Data;
+using Aegis.Infrastructure.Extensions;
+using Microsoft.EntityFrameworkCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// ─── Infrastructure (EF Core, repositories, WatsonxClient) ───────────────────
+var connectionString = builder.Configuration.GetConnectionString("AegisDb")
+    ?? "Data Source=aegis.db";
+
+builder.Services.AddAegisInfrastructure(connectionString, builder.Configuration);
+
+// ─── Domain services ─────────────────────────────────────────────────────────
+builder.Services.AddScoped<IDeviationScoringService, DeviationScoringService>();
+
+// ─── API + SignalR ────────────────────────────────────────────────────────────
+builder.Services.AddControllers();
+builder.Services.AddSignalR();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() { Title = "Aegis Health API", Version = "v1" });
+});
+
+var app = builder.Build();
+
+// ─── Auto-migrate on startup ──────────────────────────────────────────────────
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AegisDbContext>();
+    await db.Database.MigrateAsync();
+}
+
+// ─── Middleware pipeline ──────────────────────────────────────────────────────
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+app.MapControllers();
+app.MapHub<AegisHub>("/hubs/aegis");
+
+app.Run();
