@@ -344,6 +344,145 @@ body::before {
   display: flex; justify-content: space-between;
   background: var(--bg-panel);
 }
+/* ── Simulation Control Panel ──────────────────────────────────────────── */
+#ctrl-toggle {
+  position: fixed;
+  bottom: 40px;
+  right: 20px;
+  z-index: 200;
+  background: #0b1520;
+  border: 1px solid var(--border-bright);
+  color: var(--text-bright);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+#ctrl-toggle:hover {
+  border-color: #6ab0c0;
+  color: #aadde8;
+}
+
+#ctrl-panel {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  width: 300px;
+  background: #070d12;
+  border: 1px solid var(--border-bright);
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  gap: 0;
+  box-shadow: 0 0 30px rgba(0,0,0,0.7);
+}
+#ctrl-panel.open { display: flex; }
+
+.ctrl-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--text-bright);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ctrl-section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.ctrl-label {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: #8abccc;
+  margin-bottom: 6px;
+}
+
+.ctrl-select {
+  width: 100%;
+  background: #0b1520;
+  border: 1px solid var(--border-bright);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 8px;
+  appearance: none;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+.ctrl-select:focus { outline: 1px solid #6ab0c0; }
+.ctrl-select option { background: #0b1520; }
+
+.ctrl-input {
+  width: 100%;
+  background: #0b1520;
+  border: 1px solid var(--border-bright);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 6px 8px;
+  letter-spacing: 0.05em;
+}
+.ctrl-input:focus { outline: 1px solid #6ab0c0; }
+
+.ctrl-btns { display: flex; gap: 6px; margin-top: 8px; }
+.ctrl-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  color: #8abccc;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 7px 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ctrl-btn:hover               { border-color: #9accd8; color: var(--text-bright); }
+.ctrl-btn.mild:hover          { border-color: var(--col-warn-fg); color: var(--col-warn-fg); }
+.ctrl-btn.severe:hover        { border-color: var(--col-alert-fg); color: var(--col-alert-fg); }
+.ctrl-btn.critical-btn:hover  { border-color: var(--col-crit-fg);  color: var(--col-crit-fg); }
+.ctrl-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.ctrl-custom-row {
+  display: flex; gap: 6px; align-items: center; margin-top: 8px;
+}
+.ctrl-custom-row .ctrl-input { flex: 1; }
+.ctrl-btn-inject {
+  background: transparent;
+  border: 1px solid #6ab0c0;
+  color: #6ab0c0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.ctrl-btn-inject:hover { border-color: var(--text-bright); color: var(--text-bright); }
+
+.ctrl-feedback {
+  padding: 8px 14px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #6ab0c0;
+  min-height: 34px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.ctrl-feedback.ok     { color: #20c050; }
+.ctrl-feedback.warn   { color: var(--col-warn-fg); }
+.ctrl-feedback.error  { color: var(--col-crit-fg); }
+
+/* live sim indicator */
+#livesim-badge {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: #20c050;
+  display: flex; align-items: center; gap: 5px;
+}
+#livesim-badge .dot { background: #20c050; box-shadow: 0 0 5px #20c05070; }
 </style>
 </head>
 <body>
@@ -355,6 +494,7 @@ body::before {
     <div id="header-sub">CREW HEALTH MONITORING SYSTEM · LONG-DURATION MISSION</div>
   </div>
   <div id="header-right">
+    <div id="livesim-badge"><div class="dot connected"></div> LIVE SIM</div>
     <div id="mission-clock">T+ --:--:--</div>
     <div id="hub-status">
       <div class="dot" id="hub-dot"></div>
@@ -370,6 +510,46 @@ body::before {
 <div id="footer">
   <span>AEGIS v1.0 · IBM WATSONX.AI POWERED</span>
   <span id="last-update">LAST UPDATE: --</span>
+</div>
+
+<!-- ── Simulation Control Panel ───────────────────────────────────────────── -->
+<button id="ctrl-toggle" onclick="toggleCtrl()">⬡ SIM CONTROL</button>
+
+<div id="ctrl-panel">
+  <div class="ctrl-head">
+    <span>SIMULATION CONTROL</span>
+    <span style="cursor:pointer;color:#6ab0c0" onclick="toggleCtrl()">✕</span>
+  </div>
+
+  <div class="ctrl-section">
+    <div class="ctrl-label">CREW MEMBER</div>
+    <select id="ctrl-astro" class="ctrl-select"></select>
+  </div>
+
+  <div class="ctrl-section">
+    <div class="ctrl-label">METRIC</div>
+    <select id="ctrl-metric" class="ctrl-select">
+      <option value="HRV">HRV</option>
+      <option value="SleepQuality">SLEEP QUALITY</option>
+      <option value="BoneDensityIndex">BONE DENSITY INDEX</option>
+      <option value="MoodStressScore">MOOD / STRESS SCORE</option>
+    </select>
+  </div>
+
+  <div class="ctrl-section">
+    <div class="ctrl-label">INJECT PRESET</div>
+    <div class="ctrl-btns">
+      <button class="ctrl-btn mild"         onclick="injectPreset('mild')">MILD ANOMALY</button>
+      <button class="ctrl-btn severe"       onclick="injectPreset('severe')">SEVERE SPIKE</button>
+    </div>
+    <div class="ctrl-label" style="margin-top:12px">CUSTOM VALUE</div>
+    <div class="ctrl-custom-row">
+      <input id="ctrl-custom-val" class="ctrl-input" type="number" step="any" placeholder="e.g. 42.0">
+      <button class="ctrl-btn-inject" onclick="injectCustom()">INJECT</button>
+    </div>
+  </div>
+
+  <div class="ctrl-feedback" id="ctrl-feedback"></div>
 </div>
 
 <script>
@@ -805,6 +985,7 @@ async function pollAll() {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   initGrid();
+  initCtrlPanel();
 
   // Load spark history first, then status
   for (const astro of ASTRONAUTS) {
@@ -820,6 +1001,118 @@ async function boot() {
 }
 
 boot();
+
+// ── Simulation Control Panel ─────────────────────────────────────────────────
+function initCtrlPanel() {
+  const sel = document.getElementById('ctrl-astro');
+  ASTRONAUTS.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = `${a.name} · ${a.nasaId}`;
+    sel.appendChild(opt);
+  });
+}
+
+function toggleCtrl() {
+  document.getElementById('ctrl-panel').classList.toggle('open');
+}
+
+function setFeedback(msg, type = '') {
+  const el = document.getElementById('ctrl-feedback');
+  el.className = 'ctrl-feedback' + (type ? ` ${type}` : '');
+  el.textContent = msg;
+}
+
+async function injectPreset(preset) {
+  const astronautId = document.getElementById('ctrl-astro').value;
+  const metricType  = document.getElementById('ctrl-metric').value;
+  if (!astronautId) { setFeedback('SELECT A CREW MEMBER FIRST', 'error'); return; }
+
+  setFeedback('INJECTING READING...', '');
+  disableCtrlBtns(true);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/readings/inject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ astronautId, metricType, preset }),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      setFeedback(`ERROR ${res.status}: ${txt.slice(0,80)}`, 'error');
+      return;
+    }
+
+    const data = await res.json();
+    const sev  = data.severity ?? 'NONE';
+    const score = data.compositeRiskScore ?? '--';
+    const label = preset === 'severe' ? 'SEVERE SPIKE' : 'MILD ANOMALY';
+
+    setFeedback(
+      `${label} INJECTED · ${metricType} · SEV: ${sev} · COMPOSITE: ${score}`,
+      sev === 'None' ? 'ok' : sev === 'Warning' ? 'warn' : 'error'
+    );
+
+    // Refresh that card immediately
+    const astro = ASTRONAUTS.find(a => a.id === astronautId);
+    if (astro) fetchStatus(astro);
+
+  } catch (e) {
+    setFeedback(`NETWORK ERROR: ${e.message}`, 'error');
+  } finally {
+    disableCtrlBtns(false);
+  }
+}
+
+async function injectCustom() {
+  const astronautId = document.getElementById('ctrl-astro').value;
+  const metricType  = document.getElementById('ctrl-metric').value;
+  const rawVal      = document.getElementById('ctrl-custom-val').value;
+
+  if (!astronautId) { setFeedback('SELECT A CREW MEMBER FIRST', 'error'); return; }
+  const value = parseFloat(rawVal);
+  if (isNaN(value)) { setFeedback('ENTER A VALID NUMERIC VALUE', 'error'); return; }
+
+  setFeedback('INJECTING CUSTOM READING...', '');
+  disableCtrlBtns(true);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/readings/inject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ astronautId, metricType, preset: 'custom', value }),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      setFeedback(`ERROR ${res.status}: ${txt.slice(0,80)}`, 'error');
+      return;
+    }
+
+    const data = await res.json();
+    const sev  = data.severity ?? 'NONE';
+    const score = data.compositeRiskScore ?? '--';
+
+    setFeedback(
+      `CUSTOM VALUE ${value} · ${metricType} · SEV: ${sev} · COMPOSITE: ${score}`,
+      sev === 'None' ? 'ok' : sev === 'Warning' ? 'warn' : 'error'
+    );
+
+    const astro = ASTRONAUTS.find(a => a.id === astronautId);
+    if (astro) fetchStatus(astro);
+
+  } catch (e) {
+    setFeedback(`NETWORK ERROR: ${e.message}`, 'error');
+  } finally {
+    disableCtrlBtns(false);
+  }
+}
+
+function disableCtrlBtns(disabled) {
+  document.querySelectorAll('.ctrl-btn, .ctrl-btn-inject')
+    .forEach(b => b.disabled = disabled);
+}
 </script>
 </body>
 </html>

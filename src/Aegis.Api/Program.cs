@@ -1,4 +1,5 @@
 using Aegis.Api.Hubs;
+using Aegis.Api.Services;
 using Aegis.Core.Interfaces;
 using Aegis.Core.Services;
 using Aegis.Infrastructure.Data;
@@ -17,6 +18,7 @@ builder.Services.AddAegisInfrastructure(connectionString, builder.Configuration)
 builder.Services.AddScoped<IDeviationScoringService, DeviationScoringService>();
 
 // ─── API + SignalR ────────────────────────────────────────────────────────────
+builder.Services.AddHostedService<LiveSimulationWorker>();
 builder.Services.AddControllers()
     .AddJsonOptions(opts =>
     {
